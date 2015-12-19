@@ -2,9 +2,12 @@ package bsu.mmf.mashenkova.steps;
 
 import bsu.mmf.mashenkova.pages.MainPage;
 import bsu.mmf.mashenkova.pages.VideoPage;
+import com.gargoylesoftware.htmlunit.javascript.background.JavaScriptExecutor;
 import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.firefox.FirefoxDriver;
@@ -23,6 +26,10 @@ public class Steps
 
 	private final Logger logger = Logger.getLogger(Steps.class);
 
+	{
+		logger.setLevel(Level.DEBUG);
+	}
+
 	public void initBrowser()
 	{
 		driver = new FirefoxDriver();
@@ -35,100 +42,136 @@ public class Steps
 	public void closeDriver()
 	{
 		driver.quit();
+		logger.info("Browser closed");
 	}
 
 	public void searchForVideos() {
+		logger.info("Init search for videos");
+		logger.debug("Search query: " + SEARCH_QUERY);
 		MainPage mainPage = new MainPage(driver);
 		mainPage.openPage();
 		mainPage.search(SEARCH_QUERY);
 	}
 
 	public boolean videoSearchResultsContainQuery() {
+		boolean result = true;
 		searchForVideos();
-		List<WebElement> searchResults = driver.findElements(By.className("yt-uix-tile-link"));
+		logger.info("Obtain search results");
+		List<WebElement> searchResults = driver.findElement(By.className("section-list")).findElements(By.className("yt-lockup-video"));
 		if(searchResults.size() == 0) {
-			return false;
-		}
-		for (WebElement searchResult : searchResults) {
-			if (!searchResult.getText().toLowerCase().contains(SEARCH_QUERY.toLowerCase())) {
-				return false;
+			logger.error("No search results");
+			result = false;
+		} else {
+			for (WebElement searchResult : searchResults) {
+				if (!searchResult.getText().toLowerCase().contains(SEARCH_QUERY.toLowerCase())) {
+					logger.error("Incorrect result: " + searchResult.getText() + " doesn't contain query " + SEARCH_QUERY);
+					result = false;
+				}
 			}
 		}
-		return true;
+		logger.debug("Test result = " + result);
+		return result;
 	}
 
 	public boolean videoOpens() {
 		searchForVideos();
-		List<WebElement> searchVideoResults = driver.findElements(By.className("yt-lockup-video"));
+		logger.info("Obtain search results");
+		List<WebElement> searchVideoResults = driver.findElement(By.className("section-list")).findElements(By.className("yt-lockup-video"));
 		if(searchVideoResults.size() == 0) {
+			logger.error("No search results");
 			return false;
 		}
+		logger.info("Open video in the first result");
 		searchVideoResults.get(0).click();
-		WebElement videoPlayer = driver.findElement(By.className("html5-video-player"));
-		return videoPlayer != null;
+		logger.info("Check if video player is present on the page");
+		WebElement videoPlayer = driver.findElement(By.className("html5-main-video"));
+		boolean result = videoPlayer != null;
+		logger.debug("Test result = " + result);
+		return result;
 	}
 
 	public boolean videoPlays() {
-		WebElement time = driver.findElement(By.className("ytp-time-current"));
-		String startTime = time.getAttribute("innerHTML");
-		logger.info(startTime);
-		try {
-			Thread.sleep(30000);
-		} catch (InterruptedException e) {
-			return false;
-		}
-		String endTime = time.getAttribute("innerHTML");
-		logger.info(endTime);
-		return !startTime.equals(endTime);
+		logger.info("Open video");
+		VideoPage p = new VideoPage(driver);
+		p.openPage();
+		boolean result = p.videoTimeChanges(true);
+		logger.debug("Test result = " + result);
+		return result;
 	}
 
 	public boolean videoPauses() {
+		logger.info("Open video");
 		VideoPage videoPage = new VideoPage(driver);
 		videoPage.openPage();
-		try {
-			Thread.sleep(3000);
-		} catch (InterruptedException e) {
+		if(!sleep(3000)) {
 			return false;
 		}
+		logger.info("Pause video");
 		videoPage.startStopVideo();
-		return !videoPage.videoTimeChanges();
+		logger.info("Check if time is changing");
+		boolean result = !videoPage.videoTimeChanges(false);
+		logger.debug("Test result = " + result);
+		return result;
 	}
 
 	public boolean canGoToWideScreen() {
+		logger.info("Open video");
 		VideoPage videoPage = new VideoPage(driver);
 		videoPage.openPage();
-		videoPage.startStopVideo();
-		int playerInitialWidth = videoPage.getPlayerWidth();
-		videoPage.goToWideScreen();
-		try {
-			Thread.sleep(5000);
-		} catch (InterruptedException e) {
+		if(!sleep(3000)) {
 			return false;
 		}
+		logger.info("Pause video");
+		videoPage.startStopVideo();
+		logger.info("Find player width");
+		int playerInitialWidth = videoPage.getPlayerWidth();
+		logger.debug("Width = " + playerInitialWidth);
+		logger.info("Go to wide screen");
+		videoPage.goToWideScreen();
+		if(!sleep(5000)) {
+			return false;
+		}
+		logger.info("Find player width");
 		int playerFinalWidth = videoPage.getPlayerWidth();
+		logger.debug("Width = " + playerFinalWidth);
 //		WebElement fullscreenPlayer = driver.findElement(By.className("ytp-fullscreen"));
-		return playerInitialWidth < playerFinalWidth;
+		logger.info("Check if player width has become bigger");
+		boolean result = playerInitialWidth < playerFinalWidth;
+		logger.debug("Test result = " + result);
+		return result;
 	}
 
 	public boolean canGoToNextVideo() {
+		logger.info("Open video");
 		VideoPage videoPage = new VideoPage(driver);
 		videoPage.openPage();
+		logger.info("Get video title");
 		String firstTitle = videoPage.getVideoTitle();
-		try {
-			Thread.sleep(5000);
-		} catch (InterruptedException e) {
+		if(!sleep(5000)) {
 			return false;
 		}
+		logger.info("Go to next video");
 		videoPage.goToNextVideo();
-		logger.info(firstTitle);
+		logger.debug("First title: " + firstTitle);
+		if(!sleep(10000)) {
+			return false;
+		}
+		logger.info("Get current video title");
+		String secondTitle = videoPage.getVideoTitle();
+		logger.debug("Second title: " + secondTitle);
+		logger.info("Check if video titles are different");
+		boolean result = !firstTitle.equals(secondTitle);
+		logger.debug("Test result = " + result);
+		return result;
+	}
+
+	public boolean sleep(int timeout) {
 		try {
-			Thread.sleep(10000);
+			Thread.sleep(timeout);
+			return true;
 		} catch (InterruptedException e) {
 			return false;
 		}
-		String secondTitle = videoPage.getVideoTitle();
-		logger.info(secondTitle);
-		return !firstTitle.equals(secondTitle);
 	}
 
 	public boolean openChannel() {
